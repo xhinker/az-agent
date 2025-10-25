@@ -18,11 +18,11 @@ document.addEventListener('DOMContentLoaded', function() {
         return messageElement; // Return the created element so it can be referenced later
     }
 
-    // Function to call the OpenAI-compatible API
+    // Function to call the relay server
     async function getBotResponse(userMessage) {
         console.log("user message:"+userMessage)
         try {
-            const response = await fetch('http://192.168.68.77:1234/v1/chat/completions', {
+            const response = await fetch('http://192.168.68.65:8080/chat/completions', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
