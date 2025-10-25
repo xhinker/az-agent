@@ -4,12 +4,37 @@ document.addEventListener('DOMContentLoaded', function() {
     const messageInput  = document.getElementById('message-input');
     const sendButton    = document.getElementById('send-button');
 
+    // Initialize highlight.js
+    if (typeof hljs !== 'undefined') {
+        hljs.initHighlightingOnLoad();
+    }
+
     // Function to add a message to the chat box
     function addMessage(message, isUser = true) {
         const messageElement = document.createElement('div');
         messageElement.classList.add('message');
         messageElement.classList.add(isUser ? 'user-message' : 'bot-message');
-        messageElement.textContent = message;
+        
+        // For bot messages, parse markdown and highlight code
+        if (!isUser) {
+            // Check if marked is available before parsing
+            if (typeof marked !== 'undefined' && marked.parse) {
+                messageElement.innerHTML = marked.parse(message);
+            } else {
+                // Fallback to plain text if markdown parser isn't available
+                messageElement.textContent = message;
+            }
+            
+            // Highlight any code blocks if hljs is available
+            if (typeof hljs !== 'undefined') {
+                setTimeout(() => {
+                    hljs.highlightAll();
+                }, 0);
+            }
+        } else {
+            messageElement.textContent = message;
+        }
+        
         chatBox.appendChild(messageElement);
         
         // Scroll to the bottom

@@ -6,7 +6,7 @@ body {
 
 .chat-container {
     width: 100%;
-    max-width: 800px;
+    max-width: 1080px;
     height: 92vh; /* Use viewport height */
     border: 1px solid #444;
     display: flex;
@@ -42,6 +42,33 @@ body {
     background-color: #333;
     color: #ffffff;
     margin-right: auto;
+}
+
+/* Markdown styling */
+.bot-message markdown {
+    display: block;
+    white-space: pre-wrap;
+}
+
+/* Code block styling */
+.bot-message code {
+    background-color: #2d2d2d;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+}
+
+.bot-message pre {
+    background-color: #2d2d2d;
+    padding: 10px;
+    border-radius: 5px;
+    overflow-x: auto;
+    margin: 10px 0;
+}
+
+.bot-message pre code {
+    background-color: transparent;
+    padding: 0;
 }
 
 .message-input {
