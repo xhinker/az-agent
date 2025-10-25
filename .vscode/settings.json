@@ -1,0 +1,13 @@
+{
+    "files.autoSave": "afterDelay",
+    "window.title": "${rootNameShort}",
+    "terminal.integrated.fontFamily": "MesloLGS NF",
+    "editor.fontSize": 14,
+    "outline.icons": true,
+    "editor.acceptSuggestionOnEnter":"off",
+    "editor.rulers": [20,40,60,80],
+    "editor.tabSize": 4,
+    "editor.minimap.enabled": false,
+    "python.languageServer": "Pylance",
+    "editor.smoothScrolling":true
+}
