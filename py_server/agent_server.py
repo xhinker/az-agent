@@ -9,7 +9,7 @@ from aiohttp import web
 import os
 
 # Configuration - Update this with your actual LLM API endpoint  
-LLM_API_URL = "http://192.168.68.77:1234/v1/chat/completions"
+LLM_API_URL = "http://192.168.68.61:1234/v1/chat/completions"
 
 # Directory where HTML files are stored
 HTML_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'html_ui'))
