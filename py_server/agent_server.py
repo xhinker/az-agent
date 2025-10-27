@@ -7,12 +7,24 @@ This combines both web serving and CORS handling in one server.
 import aiohttp
 from aiohttp import web
 import os
+import uuid
 
 # Configuration - Update this with your actual LLM API endpoint  
 LLM_API_URL = "http://192.168.68.61:1234/v1/chat/completions"
 
 # Directory where HTML files are stored
 HTML_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'html_ui'))
+
+# In-memory storage for chat sessions
+sessions = {}
+
+async def create_session(request):
+    """
+    Create a new chat session and return its ID
+    """
+    session_id = str(uuid.uuid4())
+    sessions[session_id] = []
+    return web.json_response({"session_id": session_id})
 
 async def forward_request(request):
     """
@@ -23,14 +35,40 @@ async def forward_request(request):
         # Get the JSON data from the frontend request
         data = await request.json()
         
+        # Extract session_id if provided
+        session_id = data.get('session_id')
+        
+        # Create new session if none is provided
+        if not session_id:
+            session_id = str(uuid.uuid4())
+            sessions[session_id] = []
+        
+        # Get conversation history for this session
+        conversation_history = sessions[session_id]
+        
+        # Add user message to history - make sure we have proper structure
+        messages = data.get('messages', [])
+        if messages:
+            user_message = messages[-1]  # Get last message (should be user)
+            if user_message and 'role' in user_message and user_message['role'] == 'user':
+                conversation_history.append(user_message)
+        
+        # Prepare messages for LLM - include full history
+        llm_messages = conversation_history.copy()
+        
         # Make the actual API call to your LLM server
         async with aiohttp.ClientSession() as session:
-            async with session.post(LLM_API_URL, json=data) as response:
+            async with session.post(LLM_API_URL, json={**data, 'messages': llm_messages}) as response:
                 # Get the response from your LLM
                 llm_response = await response.json()
                 
+        # Add bot response to session history if we got a valid response
+        if 'choices' in llm_response and len(llm_response['choices']) > 0:
+            bot_message = llm_response['choices'][0]['message']
+            conversation_history.append(bot_message)
+        
         # Return the LLM's response to the frontend
-        return web.json_response(llm_response)
+        return web.json_response({**llm_response, "session_id": session_id})
         
     except Exception as e:
         # Handle any errors and return them to the frontend
@@ -93,6 +131,7 @@ app.router.add_get('/chat.css', serve_file)
 app.router.add_get('/chat.js', serve_file)
 app.router.add_post('/chat/completions', forward_request)
 app.router.add_get('/health', health_check)
+app.router.add_post('/session', create_session)
 
 # Handle favicon.ico request with a proper 404 response
 app.router.add_get('/favicon.ico', lambda r: web.Response(status=404))

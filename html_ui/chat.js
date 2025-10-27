@@ -9,6 +9,35 @@ document.addEventListener('DOMContentLoaded', function() {
         hljs.initHighlightingOnLoad();
     }
 
+    // Session ID management
+    let currentSessionId = localStorage.getItem('chat_session_id');
+    console.log("currentSessionId:"+ currentSessionId)
+    
+    // Create a new session if one doesn't exist
+    if (!currentSessionId) {
+        createNewSession();
+    }
+
+    // Function to create a new session
+    async function createNewSession() {
+        try {
+            const response = await fetch('http://192.168.68.65:8080/session', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                currentSessionId = data.session_id;
+                localStorage.setItem('chat_session_id', currentSessionId);
+            }
+        } catch (error) {
+            console.error('Failed to create session:', error);
+        }
+    }
+
     // Function to add a message to the chat box
     function addMessage(message, isUser = true) {
         const messageElement = document.createElement('div');
@@ -61,6 +90,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 },
                 body: JSON.stringify({
                     model: "default",
+                    session_id: currentSessionId,
                     messages: [
                         { role: "user", content: userMessage }
                     ],
@@ -73,6 +103,12 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             const data = await response.json();
+            // Update session ID if it's returned (for new sessions)
+            if (data.session_id && data.session_id !== currentSessionId) {
+                currentSessionId = data.session_id;
+                localStorage.setItem('chat_session_id', currentSessionId);
+            }
+            
             return data.choices[0].message.content;
         } catch (error) {
             console.error('Error calling API:', error);
