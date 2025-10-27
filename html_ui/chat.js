@@ -31,6 +31,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     hljs.highlightAll();
                 }, 0);
             }
+            
+            // Render LaTeX after everything else is processed
+            setTimeout(() => {
+                if (typeof MathJax !== 'undefined') {
+                    MathJax.typeset();
+                }
+            }, 0);
         } else {
             messageElement.textContent = message;
         }
