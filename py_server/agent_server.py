@@ -8,6 +8,7 @@ import aiohttp
 from aiohttp import web
 import os
 import uuid
+import json
 
 # Configuration - Update this with your actual LLM API endpoint  
 LLM_API_URL = "http://192.168.68.61:1234/v1/chat/completions"
@@ -33,37 +34,41 @@ async def chat_request(request):
     """
     try:
         # Get the JSON data from the frontend request
-        data = await request.json()
+        request_data = await request.json()
         
         # Extract session_id if provided
-        session_id = data.get('session_id')
+        request_session_id = request_data.get('session_id', None)
+        if not request_session_id:
+            error_response = {"error":"request does not include session id"}
+            return web.json_response(error_response, status = 400)
         
-        # Create new session if none is provided
-        if not session_id:
-            session_id = str(uuid.uuid4())
-            sessions[session_id] = []
-        
-        # Get conversation history for this session
-        conversation_history = sessions[session_id]
+        # Get conversation history for this session, if not exists, initialize a empty one
+        conversation_history = sessions.get(request_session_id,[])
         
         # Add user message to history - make sure we have proper structure
-        messages = data.get('messages', [])
+        messages = request_data.get('messages', [])
         
         # Handle empty messages case
         if not messages:
             error_response = {"error": "No messages provided in the request"}
             return web.json_response(error_response, status=400)
-        
         user_message = messages[-1]  # Get last message (should be user)
-        if user_message and 'role' in user_message and user_message['role'] == 'user':
-            conversation_history.append(user_message)
+
+        # Check role and add message
+        if ('role' not in user_message) or (user_message['role'] != 'user'):
+            error_response = {"error":"Message role incorrect"}
+            return web.json_response(error_response, status = 400)
+        conversation_history.append(user_message)
         
         # Prepare messages for LLM - include full history
-        llm_messages = conversation_history.copy()
+        llm_messages = conversation_history
         
         # Make the actual API call to your LLM server
+        print(f"llm_messages: {llm_messages}")
+        request_data['messages'] = llm_messages
         async with aiohttp.ClientSession() as session:
-            async with session.post(LLM_API_URL, json={**data, 'messages': llm_messages}) as response:
+            # async with session.post(LLM_API_URL, json={**request_data, 'messages': llm_messages}) as response:
+            async with session.post(LLM_API_URL, json={**request_data}) as response:
                 # Get the response from your LLM
                 llm_response = await response.json()
                 
@@ -72,12 +77,15 @@ async def chat_request(request):
             bot_message = llm_response['choices'][0]['message']
             conversation_history.append(bot_message)
         
+        sessions[request_session_id] = conversation_history
+        
         # Return the LLM's response to the frontend
-        return web.json_response({**llm_response, "session_id": session_id})
+        return web.json_response({**llm_response, "session_id": request_session_id})
         
     except Exception as e:
         # Handle any errors and return them to the frontend
         error_response = {"error": str(e)}
+        print(error_response)
         return web.json_response(error_response, status=500)
 
 async def health_check(request):
