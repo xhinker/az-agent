@@ -26,10 +26,10 @@ async def create_session(request):
     sessions[session_id] = []
     return web.json_response({"session_id": session_id})
 
-async def forward_request(request):
+async def chat_request(request):
     """
     Forward requests from the frontend to your LLM API
-    This handles CORS by making the request server-side instead of client-side
+    This handles CORS by making the llm request server-side instead of client-side
     """
     try:
         # Get the JSON data from the frontend request
@@ -129,7 +129,7 @@ app.router.add_get('/', serve_file)  # Serve chat.html by default
 app.router.add_get('/chat.html', serve_file)
 app.router.add_get('/chat.css', serve_file)
 app.router.add_get('/chat.js', serve_file)
-app.router.add_post('/chat/completions', forward_request)
+app.router.add_post('/chat/completions', chat_request)
 app.router.add_get('/health', health_check)
 app.router.add_post('/session', create_session)
 

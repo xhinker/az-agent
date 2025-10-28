@@ -139,7 +139,7 @@ document.addEventListener('DOMContentLoaded', function() {
             } catch (error) {
                 // Remove loading message and show error
                 chatBox.removeChild(loadingMessage);
-                addMessage("Error: Unable to get response from LLM.", false);
+                addMessage("Error: Unable to get response from LLM." + error, false);
             }
         }
     }
