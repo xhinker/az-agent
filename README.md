@@ -70,5 +70,4 @@ python test_client.py
 
 ## Recent Changes
 
-- Fixed JavaScript syntax errors in `html_ui/chat.js` where incorrect assignment syntax was used instead of parameter passing
 - Updated `.gitignore` to exclude test files with the pattern `*_test`
