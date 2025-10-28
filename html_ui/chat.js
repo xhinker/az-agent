@@ -305,7 +305,17 @@ async function initChat() {
         if (e.key === 'Enter' && e.ctrlKey) {
             sendMessage();
             e.preventDefault(); // Prevent new line insertion
+        } else if (e.key === 'Enter' && !e.shiftKey) {
+            // Allow Enter for new lines, but prevent default behavior for regular Enter
+            // Shift+Enter will still work for new lines
+            e.preventDefault();
         }
+    });
+
+    // Auto-resize textarea based on content
+    messageInput.addEventListener('input', function() {
+        this.style.height = 'auto';
+        this.style.height = Math.min(this.scrollHeight, 200) + 'px';
     });
 
     await loadSessions(currentSessionId);
