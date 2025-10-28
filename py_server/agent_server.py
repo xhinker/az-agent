@@ -102,7 +102,11 @@ async def chat_request(request):
         
         async with aiohttp.ClientSession() as session:
             # async with session.post(LLM_API_URL, json={**request_data, 'messages': llm_messages}) as response:
-            async with session.post(LLM_API_URL, json={**request_data}, headers=headers) as response:
+            async with session.post(
+                LLM_API_URL
+                , json      = {**request_data}
+                , headers   = headers
+            ) as response:
                 # Get the response from your LLM
                 llm_response = await response.json()
                 
@@ -111,6 +115,7 @@ async def chat_request(request):
             bot_message = llm_response['choices'][0]['message']
             conversation_history.append(bot_message)
         
+        # update the whole conversation hitory
         sessions[request_session_id] = conversation_history
         
         # Return the LLM's response to the frontend
