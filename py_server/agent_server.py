@@ -34,6 +34,26 @@ async def create_session(request):
     sessions[session_id] = []
     return web.json_response({"session_id": session_id})
 
+async def list_sessions(request):
+    """Return a list of known chat sessions."""
+    session_items = [
+        {"session_id": session_id, "title": session_id}
+        for session_id in sessions.keys()
+    ]
+    return web.json_response({"sessions": session_items})
+
+async def get_session_history(request):
+    """Return the stored message history for a session."""
+    session_id = request.match_info.get("session_id")
+    if session_id not in sessions:
+        return web.json_response({"error": "Session not found"}, status=404)
+
+    return web.json_response({
+        "session_id": session_id,
+        "title": session_id,
+        "messages": sessions.get(session_id, []),
+    })
+
 async def chat_request(request):
     """
     Forward requests from the frontend to your LLM API
@@ -160,6 +180,8 @@ app.router.add_get('/chat.js', serve_file)
 app.router.add_post('/chat/completions', chat_request)
 app.router.add_get('/health', health_check)
 app.router.add_post('/session', create_session)
+app.router.add_get('/sessions', list_sessions)
+app.router.add_get('/session/{session_id}', get_session_history)
 app.router.add_get('/config', get_config)
 
 # Handle favicon.ico request with a proper 404 response

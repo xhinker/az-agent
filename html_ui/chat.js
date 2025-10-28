@@ -2,42 +2,55 @@
 let config = {};
 
 // Initialize chat after configuration is loaded
-function initChat() {
+async function initChat() {
     const chatBox       = document.getElementById('chat-box');
     const messageInput  = document.getElementById('message-input');
     const sendButton    = document.getElementById('send-button');
+    const chatList      = document.getElementById('chat-list');
+    const newChatButton = document.getElementById('new-chat-button');
+    const sidebarToggle = document.getElementById('sidebar-toggle');
+    const sidebar       = document.getElementById('sidebar');
+    const chatTitle     = document.getElementById('chat-title');
+
+    if (!chatBox || !messageInput || !sendButton || !chatList || !newChatButton || !sidebarToggle || !sidebar || !chatTitle) {
+        console.error('Chat UI elements failed to load.');
+        return;
+    }
 
     // Initialize highlight.js
     if (typeof hljs !== 'undefined') {
         hljs.initHighlightingOnLoad();
     }
 
-    // Session ID management
     let currentSessionId = localStorage.getItem('chat_session_id');
-    console.log("currentSessionId:"+ currentSessionId)
-    
-    // Create a new session if one doesn't exist
-    if (!currentSessionId) {
-        createNewSession();
+    let sessionsCache = [];
+
+    sidebarToggle.addEventListener('click', () => {
+        sidebar.classList.toggle('collapsed');
+    });
+
+    newChatButton.addEventListener('click', async () => {
+        const sessionId = await createNewSession();
+        if (sessionId) {
+            await loadSessions(sessionId);
+        }
+    });
+
+    function clearChat() {
+        chatBox.innerHTML = '';
     }
 
-    // Function to create a new session
-    async function createNewSession() {
-        try {
-            const response = await fetch(`http://${config.server_ip}:${config.server_port}/session`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-            
-            if (response.ok) {
-                const data = await response.json();
-                currentSessionId = data.session_id;
-                localStorage.setItem('chat_session_id', currentSessionId);
-            }
-        } catch (error) {
-            console.error('Failed to create session:', error);
+    function showEmptyState() {
+        const emptyState = document.createElement('div');
+        emptyState.classList.add('empty-state');
+        emptyState.textContent = 'No messages yet. Start typing to begin the conversation.';
+        chatBox.appendChild(emptyState);
+    }
+
+    function removeEmptyState() {
+        const emptyState = chatBox.querySelector('.empty-state');
+        if (emptyState) {
+            emptyState.remove();
         }
     }
 
@@ -46,25 +59,20 @@ function initChat() {
         const messageElement = document.createElement('div');
         messageElement.classList.add('message');
         messageElement.classList.add(isUser ? 'user-message' : 'bot-message');
-        
-        // For bot messages, parse markdown and highlight code
+
         if (!isUser) {
-            // Check if marked is available before parsing
             if (typeof marked !== 'undefined' && marked.parse) {
                 messageElement.innerHTML = marked.parse(message);
             } else {
-                // Fallback to plain text if markdown parser isn't available
                 messageElement.textContent = message;
             }
-            
-            // Highlight any code blocks if hljs is available
+
             if (typeof hljs !== 'undefined') {
                 setTimeout(() => {
                     hljs.highlightAll();
                 }, 0);
             }
-            
-            // Render LaTeX after everything else is processed
+
             setTimeout(() => {
                 if (typeof MathJax !== 'undefined') {
                     MathJax.typeset();
@@ -73,18 +81,144 @@ function initChat() {
         } else {
             messageElement.textContent = message;
         }
-        
+
         chatBox.appendChild(messageElement);
-        
-        // Scroll to the bottom
         chatBox.scrollTop = chatBox.scrollHeight;
-        
-        return messageElement; // Return the created element so it can be referenced later
+
+        return messageElement;
     }
 
-    // Function to call the relay server
+    function renderChatList() {
+        chatList.innerHTML = '';
+
+        sessionsCache.forEach(({ session_id: sessionId, title }) => {
+            const item = document.createElement('div');
+            item.classList.add('chat-item');
+            if (sessionId === currentSessionId) {
+                item.classList.add('active');
+            }
+
+            item.textContent = title || sessionId;
+            item.dataset.sessionId = sessionId;
+
+            item.addEventListener('click', async () => {
+                if (sessionId !== currentSessionId) {
+                    await selectSession(sessionId);
+                }
+            });
+
+            chatList.appendChild(item);
+        });
+    }
+
+    async function createNewSession() {
+        try {
+            const response = await fetch(`http://${config.server_ip}:${config.server_port}/session`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to create session (${response.status})`);
+            }
+
+            const data = await response.json();
+            currentSessionId = data.session_id;
+            localStorage.setItem('chat_session_id', currentSessionId);
+            return currentSessionId;
+        } catch (error) {
+            console.error('Failed to create session:', error);
+            return null;
+        }
+    }
+
+    async function fetchSessionHistory(sessionId) {
+        try {
+            const response = await fetch(`http://${config.server_ip}:${config.server_port}/session/${sessionId}`);
+            if (response.status === 404) {
+                return [];
+            }
+            if (!response.ok) {
+                throw new Error(`Failed to fetch session history (${response.status})`);
+            }
+
+            const data = await response.json();
+            return Array.isArray(data.messages) ? data.messages : [];
+        } catch (error) {
+            console.error('Failed to load session history:', error);
+            return [];
+        }
+    }
+
+    async function loadSessionHistory(sessionId) {
+        const targetSession = sessionId;
+        clearChat();
+        const history = await fetchSessionHistory(sessionId);
+
+        if (currentSessionId !== targetSession) {
+            return;
+        }
+
+        if (!history.length) {
+            showEmptyState();
+            return;
+        }
+
+        history.forEach(message => {
+            const isUser = message.role === 'user';
+            addMessage(message.content || '', isUser);
+        });
+    }
+
+    async function selectSession(sessionId) {
+        currentSessionId = sessionId;
+        localStorage.setItem('chat_session_id', currentSessionId);
+        chatTitle.textContent = sessionId;
+        renderChatList();
+        await loadSessionHistory(sessionId);
+    }
+
+    async function loadSessions(preferredSessionId) {
+        try {
+            const response = await fetch(`http://${config.server_ip}:${config.server_port}/sessions`);
+            if (!response.ok) {
+                throw new Error(`Failed to load sessions (${response.status})`);
+            }
+
+            const data = await response.json();
+            sessionsCache = Array.isArray(data.sessions) ? data.sessions : [];
+
+            if (!sessionsCache.length) {
+                const newSessionId = await createNewSession();
+                if (!newSessionId) {
+                    throw new Error('Unable to create initial session.');
+                }
+
+                sessionsCache = [{ session_id: newSessionId, title: newSessionId }];
+            }
+
+            const knownIds = sessionsCache.map(session => session.session_id);
+            let sessionToSelect = preferredSessionId && knownIds.includes(preferredSessionId)
+                ? preferredSessionId
+                : currentSessionId && knownIds.includes(currentSessionId)
+                    ? currentSessionId
+                    : knownIds[0];
+
+            await selectSession(sessionToSelect);
+        } catch (error) {
+            console.error('Failed to load sessions:', error);
+            chatTitle.textContent = 'Unable to load sessions';
+            clearChat();
+            const errorState = document.createElement('div');
+            errorState.classList.add('empty-state');
+            errorState.textContent = 'Failed to load chats. Please refresh the page.';
+            chatBox.appendChild(errorState);
+        }
+    }
+
     async function getBotResponse(userMessage) {
-        console.log("user message:"+userMessage)
         try {
             const response = await fetch(`http://${config.server_ip}:${config.server_port}/chat/completions`, {
                 method: 'POST',
@@ -92,81 +226,82 @@ function initChat() {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    model: "default",
+                    model: 'default',
                     session_id: currentSessionId,
                     messages: [
-                        { role: "user", content: userMessage }
+                        { role: 'user', content: userMessage }
                     ],
                     temperature: 0.7
                 })
             });
-            
+
             if (!response.ok) {
                 throw new Error(`API error: ${response.status}`);
             }
-            
+
             const data = await response.json();
-            // Update session ID if it's returned (for new sessions)
             if (data.session_id && data.session_id !== currentSessionId) {
                 currentSessionId = data.session_id;
                 localStorage.setItem('chat_session_id', currentSessionId);
+                renderChatList();
             }
-            
-            return data.choices[0].message.content;
+
+            return data.choices?.[0]?.message?.content ?? 'No response received from the model.';
         } catch (error) {
             console.error('Error calling API:', error);
-            return "Sorry, I encountered an error processing your request.";
+            throw error;
         }
     }
 
-    // Function to handle sending a message
     async function sendMessage() {
         const message = messageInput.value.trim();
-        if (message) {
-            // Add user message
-            addMessage(message, true);
-            
-            // Clear input
-            messageInput.value = '';
-            
-            // Show loading indicator while waiting for response
-            const loadingMessage = addMessage("Thinking...", false);
-            
-            try {
-                // Get response from API
-                const botResponse = await getBotResponse(message);
-                
-                // Remove loading message and add actual response
-                chatBox.removeChild(loadingMessage);
-                addMessage(botResponse, false);
-            } catch (error) {
-                // Remove loading message and show error
-                chatBox.removeChild(loadingMessage);
-                addMessage("Error: Unable to get response from LLM." + error, false);
+        if (!message) {
+            return;
+        }
+
+        if (!currentSessionId) {
+            await loadSessions();
+            if (!currentSessionId) {
+                console.error('No active chat session available.');
+                return;
             }
+        }
+
+        removeEmptyState();
+        addMessage(message, true);
+        messageInput.value = '';
+
+        const loadingMessage = addMessage('Thinking...', false);
+
+        try {
+            const botResponse = await getBotResponse(message);
+            chatBox.removeChild(loadingMessage);
+            addMessage(botResponse, false);
+        } catch (error) {
+            chatBox.removeChild(loadingMessage);
+            addMessage('Error: Unable to get response from LLM. ' + error, false);
         }
     }
 
-    // Event listeners
     sendButton.addEventListener('click', sendMessage);
-    
+
     messageInput.addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
             sendMessage();
         }
     });
+
+    await loadSessions(currentSessionId);
 }
 
 // Chat application functionality
 document.addEventListener('DOMContentLoaded', function() {    
-    // Load configuration first
     async function loadConfig() {
         try {
             const response = await fetch('/config');
             if (response.ok) {
                 config = await response.json();
-                console.log("Configuration loaded:", config);
-                initChat();
+                await initChat();
             } else {
                 console.error('Failed to load configuration');
             }
@@ -175,6 +310,5 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Load config when the page loads
     loadConfig();
 });

@@ -16,20 +16,37 @@
     </script>
 </head>
 <body>
-    <div class="chat-container">
-        <!-- Main chat box -->
-        <div id="chat-box" class="chat-box">
-            <!-- Messages will be displayed here -->
-        </div>
-        
-        <!-- Chat enter/input area -->
-        <div class="chat-enter">
-            <input 
-                type        = "text" 
-                id          = "message-input" 
-                class       = "message-input" 
-                placeholder = "Type your message here...">
-            <button id="send-button" class="send-button">Send</button>
+    <div class="app-container">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <button id="sidebar-toggle" class="sidebar-toggle" aria-label="Toggle chat list">Menu</button>
+                <button id="new-chat-button" class="new-chat-button" aria-label="Create new chat">
+                    <span class="button-icon">+</span>
+                    <span class="button-text">New Chat</span>
+                </button>
+            </div>
+            <div id="chat-list" class="chat-list" role="navigation" aria-label="Chat sessions"></div>
+        </aside>
+
+        <div class="chat-container">
+            <div class="chat-toolbar">
+                <h1 id="chat-title" class="chat-title">Loading...</h1>
+            </div>
+
+            <!-- Main chat box -->
+            <div id="chat-box" class="chat-box">
+                <!-- Messages will be displayed here -->
+            </div>
+            
+            <!-- Chat enter/input area -->
+            <div class="chat-enter">
+                <input 
+                    type        = "text" 
+                    id          = "message-input" 
+                    class       = "message-input" 
+                    placeholder = "Type your message here...">
+                <button id="send-button" class="send-button">Send</button>
+            </div>
         </div>
     </div>
 
