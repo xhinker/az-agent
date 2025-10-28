@@ -17,14 +17,15 @@ with open(config_path, 'r') as config_file:
 
 # Configuration - Update this with your actual LLM API endpoint  
 LLM_API_URL = config.get("llm_api_url", "http://192.168.68.61:1234/v1/chat/completions")
-SERVER_IP = config.get("server_ip", "192.168.68.65")
+LLM_API_KEY = config.get("llm_api_key", "")
+SERVER_IP   = config.get("server_ip", "192.168.68.65")
 SERVER_PORT = config.get("server_port", 8080)
 
 # Directory where HTML files are stored
-HTML_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'html_ui'))
+HTML_DIR    = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'html_ui'))
 
 # In-memory storage for chat sessions
-sessions = {}
+sessions    = {}
 
 async def create_session(request):
     """
@@ -93,9 +94,15 @@ async def chat_request(request):
         # Make the actual API call to your LLM server
         print(f"llm_messages: {llm_messages}")
         request_data['messages'] = llm_messages
+        
+        # Prepare headers with API key if available
+        headers = {}
+        if LLM_API_KEY:
+            headers['Authorization'] = f'Bearer {LLM_API_KEY}'
+        
         async with aiohttp.ClientSession() as session:
             # async with session.post(LLM_API_URL, json={**request_data, 'messages': llm_messages}) as response:
-            async with session.post(LLM_API_URL, json={**request_data}) as response:
+            async with session.post(LLM_API_URL, json={**request_data}, headers=headers) as response:
                 # Get the response from your LLM
                 llm_response = await response.json()
                 
