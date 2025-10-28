@@ -1,5 +1,8 @@
-// Chat application functionality
-document.addEventListener('DOMContentLoaded', function() {
+// Configuration object to be loaded from server
+let config = {};
+
+// Initialize chat after configuration is loaded
+function initChat() {
     const chatBox       = document.getElementById('chat-box');
     const messageInput  = document.getElementById('message-input');
     const sendButton    = document.getElementById('send-button');
@@ -21,7 +24,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Function to create a new session
     async function createNewSession() {
         try {
-            const response = await fetch('http://192.168.68.65:8080/session', {
+            const response = await fetch(`http://${config.server_ip}:${config.server_port}/session`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -83,7 +86,7 @@ document.addEventListener('DOMContentLoaded', function() {
     async function getBotResponse(userMessage) {
         console.log("user message:"+userMessage)
         try {
-            const response = await fetch('http://192.168.68.65:8080/chat/completions', {
+            const response = await fetch(`http://${config.server_ip}:${config.server_port}/chat/completions`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -152,4 +155,26 @@ document.addEventListener('DOMContentLoaded', function() {
             sendMessage();
         }
     });
+}
+
+// Chat application functionality
+document.addEventListener('DOMContentLoaded', function() {    
+    // Load configuration first
+    async function loadConfig() {
+        try {
+            const response = await fetch('/config');
+            if (response.ok) {
+                config = await response.json();
+                console.log("Configuration loaded:", config);
+                initChat();
+            } else {
+                console.error('Failed to load configuration');
+            }
+        } catch (error) {
+            console.error('Error loading configuration:', error);
+        }
+    }
+
+    // Load config when the page loads
+    loadConfig();
 });

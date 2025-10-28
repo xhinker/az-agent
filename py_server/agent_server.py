@@ -10,8 +10,15 @@ import os
 import uuid
 import json
 
+# Load configuration from config.json
+config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'config.json'))
+with open(config_path, 'r') as config_file:
+    config = json.load(config_file)
+
 # Configuration - Update this with your actual LLM API endpoint  
-LLM_API_URL = "http://192.168.68.61:1234/v1/chat/completions"
+LLM_API_URL = config.get("llm_api_url", "http://192.168.68.61:1234/v1/chat/completions")
+SERVER_IP = config.get("server_ip", "192.168.68.65")
+SERVER_PORT = config.get("server_port", 8080)
 
 # Directory where HTML files are stored
 HTML_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'html_ui'))
@@ -92,6 +99,14 @@ async def health_check(request):
     """Simple health check endpoint"""
     return web.json_response({"status": "healthy"})
 
+async def get_config(request):
+    """Serve configuration to the frontend"""
+    return web.json_response({
+        "llm_api_url": LLM_API_URL,
+        "server_ip": SERVER_IP,
+        "server_port": SERVER_PORT
+    })
+
 async def serve_file(request):
     """Serve files from the html_ui directory"""
     try:
@@ -145,10 +160,11 @@ app.router.add_get('/chat.js', serve_file)
 app.router.add_post('/chat/completions', chat_request)
 app.router.add_get('/health', health_check)
 app.router.add_post('/session', create_session)
+app.router.add_get('/config', get_config)
 
 # Handle favicon.ico request with a proper 404 response
 app.router.add_get('/favicon.ico', lambda r: web.Response(status=404))
 
 if __name__ == '__main__':
     # Run the server on your specified IP and port
-    web.run_app(app, host='192.168.68.65', port=8080)
+    web.run_app(app, host=SERVER_IP, port=SERVER_PORT)
