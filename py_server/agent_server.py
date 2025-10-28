@@ -9,6 +9,7 @@ from aiohttp import web
 import os
 import uuid
 import json
+import glob
 
 # Load configuration from config.json
 config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'config.json'))
@@ -24,8 +25,52 @@ SERVER_PORT = config.get("server_port", 8080)
 # Directory where HTML files are stored
 HTML_DIR    = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'html_ui'))
 
+# Directory where chat history will be stored
+DATA_DIR    = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data'))
+
 # In-memory storage for chat sessions
 sessions    = {}
+
+def save_session_to_file(session_id, messages):
+    """Save a session's messages to a JSON file"""
+    try:
+        session_file = os.path.join(DATA_DIR, f"{session_id}.json")
+        with open(session_file, 'w') as f:
+            json.dump({
+                "session_id": session_id,
+                "messages": messages
+            }, f, indent=2)
+    except Exception as e:
+        print(f"Error saving session {session_id}: {e}")
+
+def load_sessions_from_files():
+    """Load all chat sessions from JSON files in the data directory"""
+    sessions = {}
+    try:
+        # Ensure data directory exists
+        os.makedirs(DATA_DIR, exist_ok=True)
+        
+        # Find all JSON files in the data directory
+        session_files = glob.glob(os.path.join(DATA_DIR, "*.json"))
+        
+        for session_file in session_files:
+            try:
+                with open(session_file, 'r') as f:
+                    session_data = json.load(f)
+                    session_id = session_data.get("session_id")
+                    messages = session_data.get("messages", [])
+                    
+                    if session_id:
+                        sessions[session_id] = messages
+                        print(f"Loaded session: {session_id} with {len(messages)} messages")
+            except Exception as e:
+                print(f"Error loading session file {session_file}: {e}")
+        
+        print(f"Loaded {len(sessions)} chat sessions from disk")
+    except Exception as e:
+        print(f"Error loading sessions: {e}")
+    
+    return sessions
 
 async def create_session(request):
     """
@@ -33,6 +78,8 @@ async def create_session(request):
     """
     session_id = str(uuid.uuid4())
     sessions[session_id] = []
+    # Save empty session to file
+    save_session_to_file(session_id, [])
     return web.json_response({"session_id": session_id})
 
 async def list_sessions(request):
@@ -115,8 +162,11 @@ async def chat_request(request):
             bot_message = llm_response['choices'][0]['message']
             conversation_history.append(bot_message)
         
-        # update the whole conversation hitory
+        # update the whole conversation history
         sessions[request_session_id] = conversation_history
+        
+        # Save updated session to file
+        save_session_to_file(request_session_id, conversation_history)
         
         # Return the LLM's response to the frontend
         return web.json_response({**llm_response, "session_id": request_session_id})
@@ -183,6 +233,9 @@ async def serve_file(request):
 
 # Create the aiohttp application
 app = web.Application()
+
+# Load existing chat sessions on startup
+sessions.update(load_sessions_from_files())
 
 # Add routes for serving files and API endpoints  
 app.router.add_get('/', serve_file)  # Serve chat.html by default

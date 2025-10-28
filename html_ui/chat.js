@@ -10,6 +10,10 @@ var sidebarToggle = null;
 var sidebar       = null;
 var chatTitle     = null;
 
+// Global variables for session management
+let currentSessionId = null;
+let sessionsCache = [];
+
 // init UI elements
 function init_page(){
     chatBox       = document.getElementById('chat-box');
@@ -281,8 +285,8 @@ async function initChat() {
         hljs.highlightAll();
     }
 
-    let currentSessionId = localStorage.getItem('chat_session_id');
-    let sessionsCache = [];
+    currentSessionId = localStorage.getItem('chat_session_id');
+    sessionsCache = [];
 
     sidebarToggle.addEventListener('click', () => {
         sidebar.classList.toggle('collapsed');
