@@ -49,27 +49,23 @@ function addMessage(message, isUser = true) {
     messageElement.classList.add('message');
     messageElement.classList.add(isUser ? 'user-message' : 'bot-message');
 
-    if (!isUser) {
-        if (typeof marked !== 'undefined' && marked.parse) {
-            messageElement.innerHTML = marked.parse(message);
-        } else {
-            messageElement.textContent = message;
-        }
-
-        if (typeof hljs !== 'undefined') {
-            setTimeout(() => {
-                hljs.highlightAll();
-            }, 0);
-        }
-
-        setTimeout(() => {
-            if (typeof MathJax !== 'undefined') {
-                MathJax.typeset();
-            }
-        }, 0);
+    if (typeof marked !== 'undefined' && marked.parse) {
+        messageElement.innerHTML = marked.parse(message);
     } else {
         messageElement.textContent = message;
     }
+
+    if (typeof hljs !== 'undefined') {
+        setTimeout(() => {
+            hljs.highlightAll();
+        }, 0);
+    }
+
+    setTimeout(() => {
+        if (typeof MathJax !== 'undefined') {
+            MathJax.typeset();
+        }
+    }, 0);
 
     chatBox.appendChild(messageElement);
     chatBox.scrollTop = chatBox.scrollHeight;

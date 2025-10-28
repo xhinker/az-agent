@@ -171,8 +171,9 @@ body {
 .user-message {
     background-color: #007bff;
     color: white;
-    margin-left: auto;
-    text-align: right;
+    /*It automatically calculates the left margin to push the element toward the right side of its container*/
+    margin-left: auto; 
+    text-align: left;
 }
 
 .bot-message {
