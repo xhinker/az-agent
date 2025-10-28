@@ -48,10 +48,15 @@ async def chat_request(request):
         
         # Add user message to history - make sure we have proper structure
         messages = data.get('messages', [])
-        if messages:
-            user_message = messages[-1]  # Get last message (should be user)
-            if user_message and 'role' in user_message and user_message['role'] == 'user':
-                conversation_history.append(user_message)
+        
+        # Handle empty messages case
+        if not messages:
+            error_response = {"error": "No messages provided in the request"}
+            return web.json_response(error_response, status=400)
+        
+        user_message = messages[-1]  # Get last message (should be user)
+        if user_message and 'role' in user_message and user_message['role'] == 'user':
+            conversation_history.append(user_message)
         
         # Prepare messages for LLM - include full history
         llm_messages = conversation_history.copy()
