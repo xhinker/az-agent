@@ -13,7 +13,9 @@ async def test_relay_server():
     
     # Test data that matches what your frontend would send
     test_data = {
-        "model": "default",
+        # "model": "qwen3-coder-30b-a3b-instruct-mlx",
+        "model": "deepseek-chat",
+        "session_id":"06453be1-61e1-4101-8eb9-8cfaaa25964f",
         "messages": [
             {"role": "user", "content": "Hello, how are you?"}
         ],
@@ -24,16 +26,17 @@ async def test_relay_server():
         # Send request to the relay server
         async with aiohttp.ClientSession() as session:
             print("Sending test request to relay server...")
-            async with session.post('http://192.168.68.65:8080/chat/completions', 
-                                  json=test_data) as response:
-                
+            async with session.post(
+                'http://192.168.68.65:8080/chat/completions'
+                , json=test_data
+            ) as response:    
                 print(f"Status Code: {response.status}")
                 
                 if response.status == 200:
                     # Success - get the JSON response
                     result = await response.json()
                     print("✅ Relay server working correctly!")
-                    print(f"Response: {json.dumps(result, indent=2)}")
+                    print(f"Response: {json.dumps(result, indent=4)}")
                 else:
                     # Error response
                     error_text = await response.text()

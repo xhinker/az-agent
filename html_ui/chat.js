@@ -215,7 +215,8 @@ async function getBotResponse(userMessage) {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                model: 'default',
+                // you have to use the "model" here, it is required by LLM API
+                model: config.model_name,
                 session_id: currentSessionId,
                 messages: [
                     { role: 'user', content: userMessage }
@@ -328,6 +329,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const response = await fetch('/config');
             if (response.ok) {
                 config = await response.json();
+                console.log(config)
                 init_page()
                 await initChat();
             } else {

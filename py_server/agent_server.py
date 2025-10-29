@@ -16,11 +16,27 @@ config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'con
 with open(config_path, 'r') as config_file:
     config = json.load(config_file)
 
-# Configuration - Update this with your actual LLM API endpoint  
-LLM_API_URL = config.get("llm_api_url", "http://192.168.68.61:1234/v1/chat/completions")
-LLM_API_KEY = config.get("llm_api_key", "")
-SERVER_IP   = config.get("server_ip", "192.168.68.65")
+# Configuration - Support multiple LLM models
+LLM_MODELS = config.get("llm_models", {})
+SERVER_IP = config.get("server_ip", "192.168.68.65")
 SERVER_PORT = config.get("server_port", 8080)
+
+# set target model
+# TARGET_MODEL_NAME_KEY = "deepseek-chat"
+TARGET_MODEL_NAME_KEY = "qwen3-coder-30b-a3b-instruct-mlx"
+
+MODEL_CONFIG = {}
+
+# get the configured model name
+for model_name_key, model_config_value in LLM_MODELS.items():
+    if model_name_key == TARGET_MODEL_NAME_KEY:
+        MODEL_CONFIG = model_config_value
+        break
+
+# Determine which model to use
+model_name  = MODEL_CONFIG.get('model_name', 'default')
+llm_api_url = MODEL_CONFIG.get("llm_api_url")
+llm_api_key = MODEL_CONFIG.get("llm_api_key", "")
 
 # Directory where HTML files are stored
 HTML_DIR    = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'html_ui'))
@@ -110,6 +126,7 @@ async def chat_request(request):
     try:
         # Get the JSON data from the frontend request
         request_data = await request.json()
+        print(f"request raw data:{json.dumps(request_data,indent=4)}")
         
         # Extract session_id if provided
         request_session_id = request_data.get('session_id', None)
@@ -138,24 +155,35 @@ async def chat_request(request):
         # Prepare messages for LLM - include full history
         llm_messages = conversation_history
         
+        # Clean messages for DeepSeek API - remove empty tool_calls arrays
+        cleaned_messages = []
+        for message in llm_messages:
+            cleaned_message = message.copy()
+            # Remove tool_calls if it's an empty array
+            if 'tool_calls' in cleaned_message and cleaned_message['tool_calls'] == []:
+                del cleaned_message['tool_calls']
+            cleaned_messages.append(cleaned_message)
+        
+        llm_messages = cleaned_messages
+        
         # Make the actual API call to your LLM server
-        print(f"llm_messages: {llm_messages}")
         request_data['messages'] = llm_messages
         
         # Prepare headers with API key if available
         headers = {}
-        if LLM_API_KEY:
-            headers['Authorization'] = f'Bearer {LLM_API_KEY}'
+        if llm_api_key:
+            headers['Authorization'] = f'Bearer {llm_api_key}'
         
         async with aiohttp.ClientSession() as session:
-            # async with session.post(LLM_API_URL, json={**request_data, 'messages': llm_messages}) as response:
             async with session.post(
-                LLM_API_URL
+                llm_api_url
                 , json      = {**request_data}
                 , headers   = headers
             ) as response:
                 # Get the response from your LLM
                 llm_response = await response.json()
+        
+        print(f"llm response:{json.dumps(llm_response, indent=4)}")
                 
         # Add bot response to session history if we got a valid response
         if 'choices' in llm_response and len(llm_response['choices']) > 0:
@@ -183,8 +211,16 @@ async def health_check(request):
 
 async def get_config(request):
     """Serve configuration to the frontend"""
+    # Prepare model information for frontend
+    available_models = {}
+    for model_name, model_config in LLM_MODELS.items():
+        available_models[model_name] = {
+            "model_name": model_config.get("model_name", model_name),
+        }
+    
     return web.json_response({
-        "llm_api_url": LLM_API_URL,
+        "available_models": available_models,
+        "model_name": TARGET_MODEL_NAME_KEY,
         "server_ip": SERVER_IP,
         "server_port": SERVER_PORT
     })
