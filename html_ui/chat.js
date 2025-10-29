@@ -329,7 +329,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const response = await fetch('/config');
             if (response.ok) {
                 config = await response.json();
-                console.log(config)
                 init_page()
                 await initChat();
             } else {

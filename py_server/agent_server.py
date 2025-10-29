@@ -126,7 +126,6 @@ async def chat_request(request):
     try:
         # Get the JSON data from the frontend request
         request_data = await request.json()
-        print(f"request raw data:{json.dumps(request_data,indent=4)}")
         
         # Extract session_id if provided
         request_session_id = request_data.get('session_id', None)
