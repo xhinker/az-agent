@@ -118,6 +118,167 @@ async def get_session_history(request):
         "messages": sessions.get(session_id, []),
     })
 
+async def _stream_chat_response(
+    request,
+    request_data,
+    conversation_history,
+    messages_for_llm,
+    request_session_id,
+):
+    """Stream responses from the LLM back to the client using Server-Sent Events."""
+    stream_response = web.StreamResponse(
+        status=200,
+        headers={
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
+    )
+
+    async def send_event(payload):
+        """Send a JSON payload as an SSE data event."""
+        data = json.dumps(payload)
+        await stream_response.write(f"data: {data}\n\n".encode("utf-8"))
+
+    async def send_done():
+        """Send the SSE stream terminator."""
+        await stream_response.write(b"data: [DONE]\n\n")
+        await stream_response.write_eof()
+
+    await stream_response.prepare(request)
+    await send_event({"type": "session", "session_id": request_session_id})
+
+    assistant_message = {
+        "role": "assistant",
+        "content": "",
+    }
+
+    headers = {}
+    if llm_api_key:
+        headers["Authorization"] = f"Bearer {llm_api_key}"
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            llm_api_url,
+            json={**request_data, "messages": messages_for_llm, "stream": True},
+            headers=headers,
+        ) as response:
+            if response.status != 200:
+                error_text = await response.text()
+                await send_event(
+                    {
+                        "type": "error",
+                        "status": response.status,
+                        "message": error_text,
+                    }
+                )
+                await send_done()
+                return stream_response
+
+            buffer = ""
+            tool_calls = []
+
+            async for chunk in response.content.iter_chunked(1024):
+                buffer += chunk.decode("utf-8", errors="ignore")
+
+                while "\n\n" in buffer:
+                    raw_event, buffer = buffer.split("\n\n", 1)
+                    data_lines = [
+                        line[5:].strip()
+                        for line in raw_event.splitlines()
+                        if line.startswith("data:")
+                    ]
+
+                    if not data_lines:
+                        continue
+
+                    data_payload = "\n".join(data_lines)
+
+                    if data_payload == "[DONE]":
+                        # Finalize message and persist the conversation.
+                        if tool_calls:
+                            assistant_message["tool_calls"] = tool_calls
+
+                        conversation_history.append(assistant_message)
+                        sessions[request_session_id] = conversation_history
+                        save_session_to_file(
+                            request_session_id, sessions[request_session_id]
+                        )
+
+                        await send_event(
+                            {"type": "done", "message": assistant_message}
+                        )
+                        await send_done()
+                        return stream_response
+
+                    try:
+                        payload = json.loads(data_payload)
+                    except json.JSONDecodeError:
+                        print(f"Failed to parse SSE payload: {data_payload}")
+                        continue
+
+                    choice = (payload.get("choices") or [{}])[0]
+                    delta = choice.get("delta", {})
+
+                    if "role" in delta:
+                        assistant_message["role"] = delta["role"]
+
+                    if "content" in delta and delta["content"]:
+                        assistant_message["content"] += delta["content"]
+                        await send_event(
+                            {
+                                "type": "delta",
+                                "content": delta["content"],
+                                "raw": payload,
+                            }
+                        )
+
+                    if "tool_calls" in delta:
+                        if not tool_calls:
+                            tool_calls = []
+
+                        for tool_call in delta["tool_calls"]:
+                            index = tool_call.get("index", len(tool_calls))
+
+                            while len(tool_calls) <= index:
+                                tool_calls.append(
+                                    {"id": "", "type": "", "function": {"name": "", "arguments": ""}}
+                                )
+
+                            target = tool_calls[index]
+
+                            if "id" in tool_call and tool_call["id"]:
+                                target["id"] += tool_call["id"]
+
+                            if "type" in tool_call and tool_call["type"]:
+                                target["type"] = tool_call["type"]
+
+                            if "function" in tool_call:
+                                func = tool_call["function"]
+                                function_target = target.setdefault(
+                                    "function", {"name": "", "arguments": ""}
+                                )
+
+                                if "name" in func and func["name"]:
+                                    function_target["name"] = func["name"]
+
+                                if "arguments" in func and func["arguments"]:
+                                    function_target["arguments"] += func["arguments"]
+
+                        await send_event({"type": "delta", "raw": payload})
+
+                    if choice.get("finish_reason"):
+                        assistant_message["finish_reason"] = choice["finish_reason"]
+
+    # If we reach here, streaming ended unexpectedly. Persist what we have.
+    conversation_history.append(assistant_message)
+    sessions[request_session_id] = conversation_history
+    save_session_to_file(request_session_id, sessions[request_session_id])
+    await send_event({"type": "done", "message": assistant_message})
+    await send_done()
+    return stream_response
+
+
 async def chat_request(request):
     """
     Forward requests from the frontend to your LLM API
@@ -165,9 +326,17 @@ async def chat_request(request):
         
         llm_messages = cleaned_messages
         
+        # Determine if the client requested streaming
+        stream_requested = bool(request_data.get('stream'))
+
         # Make the actual API call to your LLM server
         request_data['messages'] = llm_messages
-        
+
+        if stream_requested:
+            return await _stream_chat_response(
+                request, request_data, conversation_history, llm_messages, request_session_id
+            )
+
         # Prepare headers with API key if available
         headers = {}
         if llm_api_key:

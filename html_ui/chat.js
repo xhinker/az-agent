@@ -47,16 +47,11 @@ function removeEmptyState() {
     }
 }
 
-// Function to add a message to the chat box
-function addMessage(message, isUser = true) {
-    const messageElement = document.createElement('div');
-    messageElement.classList.add('message');
-    messageElement.classList.add(isUser ? 'user-message' : 'bot-message');
-
+function renderMarkdownContent(element, content) {
     if (typeof marked !== 'undefined' && marked.parse) {
-        messageElement.innerHTML = marked.parse(message);
+        element.innerHTML = marked.parse(content);
     } else {
-        messageElement.textContent = message;
+        element.textContent = content;
     }
 
     if (typeof hljs !== 'undefined') {
@@ -70,6 +65,20 @@ function addMessage(message, isUser = true) {
             MathJax.typeset();
         }
     }, 0);
+}
+
+// Function to add a message to the chat box
+function addMessage(message, isUser = true, options = {}) {
+    const { skipMarkdown = false } = options;
+    const messageElement = document.createElement('div');
+    messageElement.classList.add('message');
+    messageElement.classList.add(isUser ? 'user-message' : 'bot-message');
+
+    if (skipMarkdown) {
+        messageElement.textContent = message;
+    } else {
+        renderMarkdownContent(messageElement, message);
+    }
 
     chatBox.appendChild(messageElement);
     chatBox.scrollTop = chatBox.scrollHeight;
@@ -207,40 +216,143 @@ async function loadSessions(preferredSessionId) {
     }
 }
 
-async function getBotResponse(userMessage) {
-    try {
-        const response = await fetch(`http://${config.server_ip}:${config.server_port}/chat/completions`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                // you have to use the "model" here, it is required by LLM API
-                model: config.model_name,
-                session_id: currentSessionId,
-                messages: [
-                    { role: 'user', content: userMessage }
-                ],
-                temperature: 0.7
-            })
-        });
+async function streamBotResponse(userMessage, handlers = {}) {
+    const {
+        onSession,
+        onDelta,
+        onDone,
+        onError,
+        onEvent,
+    } = handlers;
 
-        if (!response.ok) {
-            throw new Error(`API error: ${response.status}`);
-        }
+    const response = await fetch(`http://${config.server_ip}:${config.server_port}/chat/completions`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            model: config.model_name,
+            session_id: currentSessionId,
+            messages: [
+                { role: 'user', content: userMessage }
+            ],
+            stream: true,
+            temperature: 0.7
+        })
+    });
 
-        const data = await response.json();
-        if (data.session_id && data.session_id !== currentSessionId) {
-            currentSessionId = data.session_id;
-            localStorage.setItem('chat_session_id', currentSessionId);
-            renderChatList();
-        }
-
-        return data.choices?.[0]?.message?.content ?? 'No response received from the model.';
-    } catch (error) {
-        console.error('Error calling API:', error);
-        throw error;
+    if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
     }
+
+    if (!response.body) {
+        throw new Error('Streaming not supported in this browser.');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    let finalMessage = null;
+    let streamError = null;
+    let streamClosed = false;
+
+    const processEvent = (eventPayload) => {
+        const { type } = eventPayload;
+
+        if (type === 'session') {
+            onSession?.(eventPayload.session_id);
+            return;
+        }
+
+        if (type === 'delta') {
+            if (eventPayload.content) {
+                onDelta?.(eventPayload);
+            } else {
+                onEvent?.(eventPayload);
+            }
+            return;
+        }
+
+        if (type === 'done') {
+            finalMessage = eventPayload.message || null;
+            onDone?.(eventPayload);
+            return;
+        }
+
+        if (type === 'error') {
+            const error = new Error(eventPayload.message || 'Stream error');
+            error.status = eventPayload.status;
+            streamError = error;
+            onError?.(error);
+            return;
+        }
+
+        onEvent?.(eventPayload);
+    };
+
+    const flushBuffer = async () => {
+        while (true) {
+            const separatorIndex = buffer.indexOf('\n\n');
+            if (separatorIndex === -1) {
+                break;
+            }
+
+            const rawEvent = buffer.slice(0, separatorIndex);
+            buffer = buffer.slice(separatorIndex + 2);
+
+            if (!rawEvent.trim()) {
+                continue;
+            }
+
+            const dataLines = rawEvent
+                .split('\n')
+                .filter(line => line.startsWith('data:'))
+                .map(line => line.slice(5).trimStart());
+
+            if (!dataLines.length) {
+                continue;
+            }
+
+            const dataPayload = dataLines.join('\n');
+
+            if (dataPayload === '[DONE]') {
+                streamClosed = true;
+                return;
+            }
+
+            try {
+                const parsed = JSON.parse(dataPayload);
+                processEvent(parsed);
+            } catch (error) {
+                console.warn('Failed to parse stream payload:', dataPayload, error);
+            }
+        }
+    };
+
+    try {
+        while (!streamClosed) {
+            const { value, done } = await reader.read();
+            if (done) {
+                break;
+            }
+
+            buffer += decoder.decode(value, { stream: true });
+            await flushBuffer();
+        }
+
+        if (!streamClosed) {
+            buffer += decoder.decode();
+            await flushBuffer();
+        }
+    } finally {
+        reader.releaseLock();
+    }
+
+    if (streamError) {
+        throw streamError;
+    }
+
+    return finalMessage;
 }
 
 async function sendMessage() {
@@ -261,15 +373,55 @@ async function sendMessage() {
     addMessage(message, true);
     messageInput.value = '';
 
-    const loadingMessage = addMessage('Thinking...', false);
+    const botMessageElement = addMessage('Thinking...', false, { skipMarkdown: true });
+    let streamedContent = '';
+    let hasReceivedDelta = false;
+
+    const updateSession = (sessionId) => {
+        if (sessionId && sessionId !== currentSessionId) {
+            currentSessionId = sessionId;
+            localStorage.setItem('chat_session_id', currentSessionId);
+            renderChatList();
+        }
+    };
 
     try {
-        const botResponse = await getBotResponse(message);
-        chatBox.removeChild(loadingMessage);
-        addMessage(botResponse, false);
+        const finalMessage = await streamBotResponse(message, {
+            onSession: updateSession,
+            onDelta: (event) => {
+                if (!event.content) {
+                    return;
+                }
+
+                if (!hasReceivedDelta) {
+                    hasReceivedDelta = true;
+                    botMessageElement.textContent = '';
+                }
+
+                streamedContent += event.content;
+                botMessageElement.textContent = streamedContent;
+                chatBox.scrollTop = chatBox.scrollHeight;
+            },
+            onDone: (event) => {
+                if (event?.message?.content) {
+                    streamedContent = event.message.content;
+                }
+            },
+            onError: (error) => {
+                console.error('Stream error:', error);
+            }
+        });
+
+        const finalContent = (finalMessage && finalMessage.content) || streamedContent;
+        if (finalContent) {
+            renderMarkdownContent(botMessageElement, finalContent);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        } else {
+            botMessageElement.textContent = 'No response received from the model.';
+        }
     } catch (error) {
-        chatBox.removeChild(loadingMessage);
-        addMessage('Error: Unable to get response from LLM. ' + error, false);
+        console.error('Error streaming response:', error);
+        botMessageElement.textContent = 'Error: Unable to get response from LLM. ' + (error.message || error);
     }
 }
 
