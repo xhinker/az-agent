@@ -1,6 +1,16 @@
 {
-    "llm_api_url": "http://192.168.68.61:1234/v1/chat/completions",
-    "llm_api_key": "lmstudio",
+    "llm_models": {
+        "deepseek-chat": {
+            "model_name": "deepseek-chat",
+            "llm_api_url": "https://api.deepseek.com/v1/chat/completions",
+            "llm_api_key": "your-api-key-here"
+        },
+        "qwen3-coder-30b-a3b-instruct-mlx": {
+            "model_name": "qwen3-coder-30b-a3b-instruct-mlx",
+            "llm_api_url": "http://192.168.68.61:1234/v1/chat/completions",
+            "llm_api_key": "lmstudio"
+        }
+    },
     "server_ip": "192.168.68.65",
     "server_port": 8080
 }
