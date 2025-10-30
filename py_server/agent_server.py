@@ -138,6 +138,7 @@ async def _stream_chat_response(
     async def send_event(payload):
         """Send a JSON payload as an SSE data event."""
         data = json.dumps(payload)
+        # send a small chunk of data every time.
         await stream_response.write(f"data: {data}\n\n".encode("utf-8"))
 
     async def send_done():
@@ -194,13 +195,14 @@ async def _stream_chat_response(
 
                     data_payload = "\n".join(data_lines)
 
-                    if data_payload == "[DONE]":
+                    if "[DONE]" in data_lines or data_payload.strip() == "[DONE]":
                         # Finalize message and persist the conversation.
                         if tool_calls:
                             assistant_message["tool_calls"] = tool_calls
 
                         conversation_history.append(assistant_message)
                         sessions[request_session_id] = conversation_history
+                        
                         save_session_to_file(
                             request_session_id, sessions[request_session_id]
                         )
