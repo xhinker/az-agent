@@ -1,5 +1,8 @@
 # The AZ Agent Development Note
 
+## TODO
+- [ ] Add chat streaming function in `llm_lib.py`
+
 ## 20251031
 
 In VScode juptyer interactive, when using the following code in one cell: 
