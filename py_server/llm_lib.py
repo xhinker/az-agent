@@ -36,8 +36,8 @@ class LLMChat:
 
         # httpx settings
         self.httpx_limits = httpx.Limits(
-            max_connections             = 100,
-            max_keepalive_connections   = 10,
+            max_connections             = 10,
+            max_keepalive_connections   = 1,
             keepalive_expiry            = 30
         )
 
