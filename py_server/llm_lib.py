@@ -110,3 +110,53 @@ class LLMChat:
             raise Exception(f"Unexpected response format: {str(e)}")
         except Exception as e:
             raise Exception(f"Unexpected error: {str(e)}")
+
+    async def async_chat(self, message: str, system_prompt: str = "") -> str:
+        """
+        Send a message to the LLM asynchronously and save the conversation history in self.messages
+        
+        Args:
+            message: The user message to send
+            system_prompt: Optional system prompt to set the context
+            
+        Returns:
+            The LLM's response as a string
+        """
+        print(f'input message:{message}')
+        # Add system prompt if provided and not already in messages
+        # Use this to change system prompt in the middle of a chat
+        if system_prompt and (not self.messages or self.messages[0].get("role") != "system"):
+            self.messages.insert(0, {"role": "system", "content": system_prompt})
+        
+        # Add user message to history
+        self.messages.append({"role": "user", "content": message})
+        
+        # Prepare the request payload
+        payload = {
+            "model": self.model_name,
+            "messages": self.messages,
+            "stream": False
+        }
+        
+        try:
+            # Send request to LLM API asynchronously
+            response = await self.async_client.post("/chat/completions", json=payload)
+            response.raise_for_status()
+            
+            # Extract the assistant's response
+            response_data = response.json()
+            assistant_message = response_data["choices"][0]["message"]["content"]
+            
+            # Add assistant response to history
+            self.messages.append({"role": "assistant", "content": assistant_message})
+            
+            return assistant_message
+            
+        except httpx.HTTPStatusError as e:
+            raise Exception(f"HTTP error occurred: {e.response.status_code} - {e.response.text}")
+        except httpx.RequestError as e:
+            raise Exception(f"Request error occurred: {str(e)}")
+        except KeyError as e:
+            raise Exception(f"Unexpected response format: {str(e)}")
+        except Exception as e:
+            raise Exception(f"Unexpected error: {str(e)}")
