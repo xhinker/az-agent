@@ -211,3 +211,5 @@ __marimo__/
 # Configuration files
 config.json
 data/*.json
+
+*_test.py
